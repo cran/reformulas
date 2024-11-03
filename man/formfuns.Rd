@@ -24,7 +24,7 @@ RHSForm(formula) <- value
 
 sumTerms(termList)
 
-reOnly(f, response = FALSE, bracket = TRUE)
+reOnly(f, response = FALSE, bracket = TRUE, doublevert_split = TRUE)
 
 makeOp(x, y, op = NULL)
 
@@ -70,6 +70,8 @@ replaceForm(term, target, repl)
 
 \item{bracket}{bracket-protect terms?}
 
+\item{doublevert_split}{(logical) TRUE for lme4 back-compatibility; FALSE to make double vertical bars into \code{diag()} eterms}
+
 \item{x}{formula}
 
 \item{y}{a formula term (or an operator)}
@@ -112,6 +114,9 @@ are applicable: the results are expanded into a list of independent (additive)
 random effect terms
 }
 \examples{
+f <- y ~ 1 + x
+RHSForm(f) <- quote(2+x^2)
+print(f)
 reOnly(~ 1 + x + y + (1|f) + (1|g))
 addForm0(y~x,~1)
 addForm0(~x,~y)

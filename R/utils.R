@@ -108,6 +108,10 @@ RHSForm <- function(form, as.form=FALSE) {
 #' @param formula a formula object
 #' @param value replacement value for RHS
 #' @rdname formfuns
+#' @examples
+#' f <- y ~ 1 + x
+#' RHSForm(f) <- quote(2+x^2)
+#' print(f)
 #' @export
 `RHSForm<-` <- function(formula,value) {
     formula[[length(formula)]] <- value
@@ -126,15 +130,19 @@ sumTerms <- function(termList) {
 #' @param f a formula
 #' @param response include response variable?
 #' @param bracket bracket-protect terms?
+#' @param doublevert_split (logical) TRUE for lme4 back-compatibility; FALSE to make double vertical bars into \code{diag()} eterms
 #' @rdname formfuns
 #' @examples
 #' reOnly(~ 1 + x + y + (1|f) + (1|g))
 #' @export
-reOnly <- function(f, response=FALSE,bracket=TRUE) {
+reOnly <- function(f, response=FALSE, bracket=TRUE, doublevert_split = TRUE) {
     flen <- length(f)
     f2 <- f[[2]]
-    if (bracket)
-        f <- lapply(findbars(f), makeOp, quote(`(`)) ## bracket-protect terms
+    if (bracket) {
+        xdv <- if (doublevert_split) "split" else "diag_special"
+        fb <- findbars_x(f, expand_doublevert_method = xdv)
+        f <- lapply(fb, makeOp, quote(`(`)) ## bracket-protect terms
+    }
     f <- sumTerms(f)
     if (response && flen==3) {
         form <- makeOp(f2, f, quote(`~`))
@@ -258,31 +266,35 @@ expandAllGrpVar <- function(bb) {
         expandAllGrpVar(list(bb))
     else {
         for (i in seq_along(bb)) {
-            esfun <- function(x) {
-                if (length(x)==1 || !anySpecial(x, "|")) return(x)
-                if (length(x)==2) {
-                        ## unary operator such as diag(1|f/g)
-                        ## return diag(...) + diag(...) + ...
-                        return(lapply(esfun(x[[2]]),
-                                      makeOp, y=head(x)))
-                }
-                if (length(x)==3) {
-                    ## binary operator
-                    if (x[[1]]==quote(`|`)) {
-                        return(lapply(expandGrpVar(x[[3]]),
-                                      makeOp, x=x[[2]], op=quote(`|`)))
-                    } else {
-                        return(x)
-                        ## return(x) would be nice, but in that case x gets evaluated
-                        ## return(setNames(makeOp(esfun(x[[2]]), esfun(x[[3]]),
-                        ##  op=x[[1]]), names(x)))
-                    }
-                }
-            } ## esfun def.
             return(unlist(lapply(bb,esfun)))
         } ## loop over bb
     }
 }
+
+esfun <- function(x) {
+    if (length(x)==1 || !anySpecial(x, "|")) return(x)
+    if (length(x)==2) {
+        ## if (head(x)==as.name("(")) {
+        ##     return(makeOp(esfun(x[[2]]), quote(`(`)))
+        ## }
+        ## unary operator such as diag(1|f/g)
+        ## return diag(...) + diag(...) + ...
+        return(lapply(esfun(x[[2]]),  makeOp, y=x[[1]]))
+    }
+    if (length(x)==3) {
+        ## binary operator
+        if (x[[1]]==quote(`|`)) {
+            return(lapply(expandGrpVar(x[[3]]),
+                          makeOp, x=x[[2]], op=quote(`|`)))
+        } else {
+            return(x)
+            ## return(x) would be nice, but in that case x gets evaluated
+            ## return(setNames(makeOp(esfun(x[[2]]), esfun(x[[3]]),
+            ##  op=x[[1]]), names(x)))
+        }
+    }
+} ## esfun def.
+
 
 ## sugar: this returns the operator, whether ~ or something else
 #' @export
@@ -299,10 +311,6 @@ head.language <- head.formula
 #' @export
 ## sugar: we can call head on a symbol and get back the symbol
 head.name <- function(x, ...) { x }
-
-## TEST: does this work as a drop-in replacement for lme4::findbars
-## if default.special = NULL?
-## (would replace current expandDoubleVerts machinery)
 
 ##' Find and process random effects terms
 ##'
@@ -342,7 +350,11 @@ findbars_x <- function(term,
                 expand_doublevert_method = c("diag_special", "split")) {
 
     expand_doublevert_method <- match.arg(expand_doublevert_method)
-    
+
+    ## drop RHS from two-sided formula
+    if (length(term) == 3 && identical(term[[1]], quote(`~`))) {
+        term <- RHSForm(term, as.form = TRUE)
+    }
     ds <- if (is.null(default.special)) {
               NULL
           } else {
@@ -547,11 +559,13 @@ splitForm <- function(formula,
 ##' noSpecials(y~us+1)  ## should *not* delete unless head of a function
 ##' noSpecials(~us(1|f)+1)   ## should work on a one-sided formula!
 ##' noSpecials(~s(stuff) + a + b, specials = "s")
+##' noSpecials(cbind(b1, 20-b1) ~ s(x, bs = "tp"))
 ##' @export
 ##' @keywords internal
 noSpecials <- function(term, delete=TRUE, debug=FALSE, specials = findReTrmClasses()) {
     nospec <- noSpecials_(term, delete=delete, debug=debug, specials = specials)
-    if (inherits(term, "formula") && length(term) == 3 && is.symbol(nospec)) {
+    empty_RHS <- inherits(term, "formula") && length(term) == 3 && (is.symbol(nospec) || !identical(nospec[[1]], quote(`~`)))
+    if (empty_RHS) {
         ## called with two-sided RE-only formula:
         ##    construct response~1 formula
         as.formula(substitute(R~1,list(R=nospec)),
@@ -581,9 +595,12 @@ noSpecials_ <- function(term, delete=TRUE, debug=FALSE, specials = findReTrmClas
                    noSpecials_(term[[3]], delete=delete, debug=debug, specials = specials)
                } else NULL
         if (is.null(nb2)) {
+            if (debug) cat("term[[2]] NULL, returning noSpecials_(term[[3]])\n")
             return(nb3)
         } else if (is.null(nb3)) {
+            if (debug) cat("term[[3]] NULL\n")
             if (length(term)==2 && identical(term[[1]], quote(`~`))) { ## special case for one-sided formula
+                if (debug) cat("one-sided formula special case\n")
                 term[[2]] <- nb2
                 return(term)
             } else {
@@ -617,12 +634,46 @@ isAnyArgSpecial <- function(term, specials = findReTrmClasses()) {
 #' Detect whether there are any 'specials' in a formula term
 #' @param term formula term
 #' @param specials values to detect
+#' @param fast (logical) use quick (syntactic) test for presence of specials?
 #' @return logical value
+#' @examples
+#' ## should only detect s as the head of a function, s(...)
+#' anySpecial(~diag(1))
+#' anySpecial(~diag)
+#' anySpecial(~diag[[1]])
+#' anySpecial(~diag[1])
+#' anySpecial(~s)
+#' anySpecial(~s(hello+goodbye,whatever))
 #' @export
-## This could be in principle be fooled by a term with a matching name
-## but this case is caught in noSpecials_() where we test for length>1
-anySpecial <- function(term, specials=findReTrmClasses()) {
-    any(specials %in% all.names(term))
+anySpecial <- function(term, specials=findReTrmClasses(), fast = FALSE) {
+    if (fast) return(any(specials %in% all.names(term)))
+    has_s <- FALSE
+    as2 <- function(expr) {
+        if (length(expr) == 1) return(NULL)  ## we've hit bottom
+        for (ss in specials) {
+            if (identical(expr[[1]], as.name(ss))) {
+                assign("has_s", TRUE, environment(as2))
+                break
+            }
+        }
+        if (has_s) return(NULL)  ## short-circuit
+        lapply(expr[-1], as2)
+    }
+    as2(term)  ## run function for side effect
+    return(has_s)
+}
+
+## also see:
+## https://stackoverflow.com/questions/79093440/is-there-a-way-to-tell-if-the-formula-contains-specific-function-inside/79094196#79094196
+##
+
+rfun <- function(expr) {
+    if (length(expr) == 1) return(FALSE)  ## we've hit bottom
+    if (identical(expr[[1]], quote(s))) return(TRUE)
+    for (el in as.list(expr[-1])) {
+        if (rfun(el)) return(TRUE)
+    }
+    return(FALSE)
 }
 
 ##' test whether a formula contains a particular element?

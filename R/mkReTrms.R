@@ -11,6 +11,7 @@
 ##' @param reorder.vars arrange columns of individual random effects terms in alphabetical order?
 ##' @param calc.lambdat (logical) compute \code{Lambdat} and \code{Lind} components? (At present these components
 ##' are needed for \code{lme4} machinery but not for \code{glmmTMB}, and may be large in some cases; see Bates \emph{et al.} 2015
+##' @param sparse (logical) set up sparse model matrices?
 ##' @return a list with components
 ##' \item{Zt}{transpose of the sparse model matrix for the random effects}
 ##'  \item{Ztlist}{list of components of the transpose of the
@@ -41,7 +42,8 @@
 mkReTrms <- function(bars, fr, drop.unused.levels=TRUE,
                      reorder.terms=TRUE,
                      reorder.vars=FALSE,
-                     calc.lambdat = TRUE) {
+                     calc.lambdat = TRUE,
+                     sparse = NULL) {
   if (!length(bars))
     stop("No random effects terms specified in formula",call.=FALSE)
   stopifnot(is.list(bars), vapply(bars, is.language, NA),
@@ -50,7 +52,7 @@ mkReTrms <- function(bars, fr, drop.unused.levels=TRUE,
   term.names <- vapply(bars, deparse1, "")
       ## get component blocks
       blist <- lapply(bars, mkBlist, fr, drop.unused.levels,
-                      reorder.vars = reorder.vars)
+                      reorder.vars = reorder.vars, sparse = sparse)
       nl <- vapply(blist, `[[`, 0L, "nl")   # no. of levels per term
                                         # (in lmer jss:  \ell_i)
       
@@ -74,6 +76,7 @@ mkReTrms <- function(bars, fr, drop.unused.levels=TRUE,
                                             # model matrix per term
       nc <- lengths(cnms)                   # no. of columns per term
                                             # (in lmer jss:  p_i)
+  if (calc.lambdat)
       nth <- as.integer((nc * (nc+1))/2)    # no. of parameters per term
                                             # (in lmer jss:  ??)
       nb <- nc * nl                         # no. of random effects per term
@@ -84,7 +87,7 @@ mkReTrms <- function(bars, fr, drop.unused.levels=TRUE,
                    sum(nb),q))
   }
   boff <- cumsum(c(0L, nb))             # offsets into b
-  thoff <- cumsum(c(0L, nth))           # offsets into theta
+  if (calc.lambdat) thoff <- cumsum(c(0L, nth))           # offsets into theta
   ## FIXME: should this be done with cBind and avoid the transpose
   ## operator?  In other words should Lambdat be generated directly
   ## instead of generating Lambda first then transposing?
@@ -110,7 +113,8 @@ mkReTrms <- function(bars, fr, drop.unused.levels=TRUE,
   } else {
       Lambdat <- Lind <- NULL
   }
-  thet <- numeric(sum(nth))
+  thet <- NULL
+  if (calc.lambdat)  thet <- numeric(sum(nth))
   ll <- list(Zt = drop0(Zt), theta = thet, Lind = Lind,
              Gp = unname(c(0L, cumsum(nb))))
   ## lower bounds on theta elements are 0 if on diagonal, else -Inf
@@ -144,12 +148,13 @@ mkReTrms <- function(bars, fr, drop.unused.levels=TRUE,
 ##' @param x a language object of the form  effect | groupvar
 ##' @param frloc model frame
 ##' @param drop.unused.levels (logical)
+##' @param sparse (logical) set up sparse model matrices?
 ##' @return list containing grouping factor, sparse model matrix, number of levels, names
 ##' @importFrom Matrix KhatriRao fac2sparse sparse.model.matrix
 ##' @importFrom stats model.matrix
 ##' @noRd
 mkBlist <- function(x,frloc, drop.unused.levels=TRUE,
-                    reorder.vars=FALSE) {
+                    reorder.vars=FALSE, sparse = NULL) {
     frloc <- factorize(x,frloc)
     ## try to evaluate grouping factor within model frame ...
     ff0 <- replaceTerm(x[[3]], quote(`:`), quote(`%i%`))
@@ -178,8 +183,8 @@ mkBlist <- function(x,frloc, drop.unused.levels=TRUE,
       cc <- attr(x, "contrasts")
       !is.null(cc) && is(cc, "sparseMatrix")
     }
-    any.sparse.contrasts <- any(vapply(frloc, has.sparse.contrasts, FUN.VALUE = TRUE))
-    mMatrix <- if (!any.sparse.contrasts) model.matrix else sparse.model.matrix
+    any.sparse.contrasts <- any(vapply(frloc, has.sparse.contrasts, FUN.VALUE = logical(1)))
+    mMatrix <- if (!isTRUE(sparse) && !any.sparse.contrasts) model.matrix else sparse.model.matrix
     mm <- mMatrix(eval(substitute( ~ foo, list(foo = x[[2]]))), frloc)
     if (reorder.vars) {
         mm <- mm[colSort(colnames(mm)),]

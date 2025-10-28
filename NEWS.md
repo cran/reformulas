@@ -1,4 +1,11 @@
-# reformulas 0.4.1
+# reformulas 0.4.2
+
+* add `randint` function to remove random slopes from a formula (Raffaele Mancuso)
+* add `ord` to `mkReTrms` output, for re-ordering terms back to original formula order
+* unexported `head.*` methods, to avoid conflicts with other packages
+* `no_specials()` drops extra arguments (e.g. `us(a|b, c)` returns (`(a|b)`)
+
+# reformulas 0.4.1 (2025-04-30)
 
 * add `sparse` argument to `mkReTrms` (for controlling sparsity of effects model matrix J, in Z construction)
 

@@ -227,8 +227,11 @@ findReTrmClasses <- function() {
 
 toLang <- function(x) parse(text=x)[[1]]
 
-#' apply
+#' apply operator expansion (e.g. a/b -> a + a:b) to a formula term
+#'
 #' @param f a language object (an atom of a formula)
+#' @export
+#' @examples
 #' expandGrpVar(quote(x*y))
 #' expandGrpVar(quote(x/y))
 expandGrpVar <- function(f) {
@@ -304,19 +307,19 @@ esfun <- function(x) {
 } ## esfun def.
 
 
+#' @exportS3Method NULL 
 ## sugar: this returns the operator, whether ~ or something else
-#' @export
 head.formula <- function(x, ...) {
     x[[1]]
 }
 
-#' @export
+#' @exportS3Method NULL 
 head.call <- head.formula
 
-#' @export
+#' @exportS3Method NULL 
 head.language <- head.formula
 
-#' @export
+#' @exportS3Method NULL 
 ## sugar: we can call head on a symbol and get back the symbol
 head.name <- function(x, ...) { x }
 
@@ -428,6 +431,18 @@ findbars_x <- function(term,
 
 }
 
+##' This is a backward-compatible (and especially lme4-compatible) wrapper for findbars_x, which is more flexible/capable.
+##' It extracts the random effects from a formula.
+##'
+##' @param term a formula or piece of a formula
+##' @examples
+##' findbars(~ 1 + (x + y || g))
+##' findbars(~ 1 + (1 | f) + (1 | g))
+##' findbars(~ 1 + (1|h) + (x + y || g))
+##' findbars(~ 1 + (1|Subject))
+#' findbars(~  1 + (1||Subject))
+##' findbars(~ (1||Subject))
+##' findbars(~ 1 + x)
 ##' @rdname formfuns
 ##' @export
 ## lme4::findbars-compatible
@@ -806,6 +821,7 @@ replaceForm <- function(term,target,repl) {
 ##' @examples
 ##' no_specials(findbars_x(~ 1 + s(x) + (f|g) + diag(x|y)))
 ##' no_specials(~us(f|g))
+##' no_specials(~us(f|g, extra_arg))
 ##' @export
 no_specials <- function(term, specials = c("|", "||", "s")) {
     if (is.list(term)) {
@@ -814,7 +830,7 @@ no_specials <- function(term, specials = c("|", "||", "s")) {
     for (ss in specials) {
         if (identical(head(term), as.name(ss))) return(term)
     }
-    if (length(term) == 3) stop("don't know what to do")
+    ## if (length(term) == 3) stop("don't know what to do")
     return(no_specials(term[[2]], specials))
 }
 

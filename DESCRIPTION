@@ -1,6 +1,6 @@
 Package: reformulas
 Title: Machinery for Processing Random Effect Formulas
-Version: 0.4.3
+Version: 0.4.3.1
 Authors@R: 
    c(
     person(given = "Ben",
@@ -17,12 +17,13 @@ License: GPL-3
 Encoding: UTF-8
 Imports: stats, methods, Matrix, Rdpack
 RdMacros: Rdpack
-Suggests: lme4, tinytest, glmmTMB
+Suggests: lme4, tinytest, glmmTMB, testthat (>= 3.0.0)
 RoxygenNote: 7.3.3
+Config/testthat/edition: 3
 NeedsCompilation: no
-Packaged: 2025-12-16 14:14:04 UTC; bolker
+Packaged: 2026-01-07 13:56:46 UTC; bolker
 Author: Ben Bolker [aut, cre] (ORCID: <https://orcid.org/0000-0002-2127-0443>),
   Anna Ly [ctb] (ORCID: <https://orcid.org/0000-0002-0210-0342>)
 Maintainer: Ben Bolker <bolker@mcmaster.ca>
 Repository: CRAN
-Date/Publication: 2025-12-17 06:40:10 UTC
+Date/Publication: 2026-01-08 06:10:11 UTC

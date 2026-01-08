@@ -56,15 +56,23 @@ get_sd.vcmat_ar1 <- function(x, ...) {
 get_sd.vcmat_homcs <- get_sd.vcmat_ar1
 
 ##' @export
+get_sd.vcmat_homdiag <- get_sd.vcmat_ar1
+
+corr_missing <- function(x) {
+  identical(c(x), NaN) || identical(c(x), NA_real_)
+}
+
+##' @export
 format_corr.default <- function(x, maxdim = Inf, digits=2, ...) {
   if (length(x)==0) return("")
   x <- attr(x, "correlation")
   x <- as(x, "matrix")
   extra_rows <- (nrow(x) > maxdim)
   newdim <- min(maxdim, nrow(x))
-  if (identical(c(x), NaN)) {
+  if (corr_missing(x)) {
     cc <- matrix("(not stored)")
   } else {
+    x <- x[1:newdim, 1:newdim, drop = FALSE]
     cc <- format(round(x, digits), nsmall = digits)
     cc[upper.tri(cc, diag = TRUE)] <- ""  ## empty upper triangle
     if (extra_rows) cc <- rbind(cc, "...")
@@ -79,14 +87,25 @@ format_corr.vcmat_diag <- function(x, maxdim = Inf, digits=2, ...) {
 }
 
 #' @export
-format_corr.vcmat_ar1 <- function(x, maxdim = Inf, digits=2, ...) {
+format_corr.vcmat_homdiag <- format_corr.vcmat_diag
+
+## generic formatting function: name *without* a dot so roxygen doesn't mistake it for
+## an S3 method
+format_corr_vcmat_onecorr <- function(x, maxdim = Inf, digits=2, ..., tag = "") {
   x <- attr(x, "correlation")
-  if (length(x)==1) {
-    cc <- format(round(x, digits), nsmall = digits)
-  } else {
-    cc <- format(round(x[2,1], digits), nsmall = digits)
-  }
-  return(matrix(paste(cc, "(ar1)")))
+  cc <- if (corr_missing(x)) {
+          "(not stored)"
+        } else if (length(x) == 1) {
+          format(round(x, digits), nsmall = digits)
+        } else {
+          format(round(x[2,1], digits), nsmall = digits)
+        }
+  return(matrix(paste(cc, sprintf("(%s)", tag))))
+}
+
+#' @export
+format_corr.vcmat_ar1 <- function(x, maxdim = Inf, digits=2, ...) {
+  format_corr_vcmat_onecorr(x, maxdim = maxdim, digits = digits, ..., tag  = "ar1")
 }
 
 #' @export
@@ -94,9 +113,7 @@ format_corr.vcmat_hetar1 <- format_corr.vcmat_ar1
 
 #' @export
 format_corr.vcmat_cs <- function(x, maxdim = Inf, digits=2, ...) {
-  x <- attr(x, "correlation")
-  cc <- format(round(x[2,1], digits), nsmall = digits)
-  return(matrix(paste(cc, "(cs)")))
+  format_corr_vcmat_onecorr(x, maxdim = maxdim, digits = digits, ..., tag  = "cs")
 }
 
 #' @export
@@ -209,7 +226,7 @@ assemble_sdcor <- function(sdvar_out, corr_out, termnames) {
   termnames_out <- do.call(rbind, termnames_out)
   colnames(termnames_out) <- "Groups"
   
-  sdvar_out <- mapply(pad_blank, sdvar_out, max_rows, max_cols, SIMPLIFY = FALSE)
+  sdvar_out <- mapply(pad_blank, sdvar_out, max_rows, max_cols = 0, SIMPLIFY = FALSE)
   sdvar_out <- do.call(rbind, sdvar_out)
   
   corr_out <- mapply(pad_blank, corr_out, max_cols = max_cols, max_rows = max_rows, SIMPLIFY = FALSE)
@@ -228,3 +245,29 @@ assemble_sdcor <- function(sdvar_out, corr_out, termnames) {
   return(res)
   
 }
+
+
+## not used (and don't want roxygen to get confused
+
+## once we decide what to do with this we can implement some nicer vcmat_* printing ...
+
+## print.vcmat <- function(x, ...) {
+##   class(x) <- class(x)[-1]  ## strip vcmat_* class attribute
+##   NextMethod(.Generic)
+## }
+
+## ##' @export
+## print.vcmat_us <- print.vcmat
+## ##' @export
+## print.vcmat_ar1 <- print.vcmat
+## ##' @export
+## print.vcmat_hetar1 <- print.vcmat
+## ##' @export
+## print.vcmat_diag <- print.vcmat
+## ##' @export
+## print.vcmat_homdiag <- print.vcmat
+## ##' @export
+## print.vcmat_cs <- print.vcmat
+## ##' @export
+## print.vcmat_homcs <- print.vcmat
+
